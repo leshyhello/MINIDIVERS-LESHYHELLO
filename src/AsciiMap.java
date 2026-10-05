@@ -14,8 +14,15 @@ public class AsciiMap {
     private char tileUnderPlayer;
     private boolean playerPlaced;
 
+    static final int MAX_PLAYER_HEALTH = 1000;
+    static int playerhealth = MAX_PLAYER_HEALTH;
+
     public char getTileUnderPlayer() {
     return tileUnderPlayer;}
+
+    public void clearTileUnderPlayer() {
+    tileUnderPlayer = emptyChar;   // emptyChar is '.' for your map
+}
 
     // Initialize the map with a default empty character
     public AsciiMap(int width, int height, char emptyChar) {
@@ -39,6 +46,15 @@ public class AsciiMap {
         }
         System.out.println("Error: Coordinates out of bounds!");
         return false;
+    }
+    // Place a tile on a random empty spot that isn't the player's start, so nothing overwrites anything else
+    public void placeOnEmptyTile(char tile) {
+        int x, y;
+        do {
+            x = enemyRandom.nextInt(width);
+            y = enemyRandom.nextInt(height);
+        } while (grid[y][x] != emptyChar || (x == playerx && y == playery));
+        grid[y][x] = tile;
     }
     public boolean placePlayer(int x, int y) {
         if (x < 0 || x >= width || y < 0 || y >= height) {
@@ -86,14 +102,119 @@ private static boolean containsSymbol(char[] symbols, char tile) {
         return false;
     }
 
+    // Build the attack for a combat option, with its random deviation already rolled.
+    // Returns null for an unknown name.
+    private static Attack makeAttack(String name) {
+        switch (name.toUpperCase()) {
+            case "OBURST":    return new Attack("WDSDS", 1000, (int) (Math.random()*50), "orbital airburst strike");
+            case "500K":      return new Attack("WDSSS", 5000, (int) (Math.random()*50), "500K bomb");
+            case "ESTRIKE":   return new Attack("WDSD", 750, (int) (Math.random()*50), "eagle airstrike");
+            case "ORAIL":     return new Attack("DWSSD", 150, 0, "orbital railcannon");
+            case "OLASER":    return new Attack("DSWDS", 2000, (int) (Math.random()*50), "orbital laser");
+            case "PODS":      return new Attack("WDWA", 150, (int) (Math.random()*50), "eagle 110mm rocket pods");
+            case "PRIMARY":   return new Attack("W", 50, (int) (Math.random()*10), "primary weapon");
+            case "SECONDARY": return new Attack("W", 30, (int) (Math.random()*20), "secondary weapon");
+            case "MEELEE":    return new Attack("W", 150, (int) (Math.random()*50), "meelee attack");
+            default:          return null;
+        }
+    }
+
+    // Single-unit health for each enemy type, used by the orbital railcannon
+    private static int unitHealth(String enemyType) {
+        switch (enemyType) {
+            case "Soldier":    return 100;
+            case "Meelee":     return 150;
+            case "Marauder":   return 150;
+            case "Devastator": return 500;
+            case "Hulk":       return 1000;
+            default:           return 5000; // WarStrider
+        }
+    }
+
+    // Runs a fight until one side is dead. Returns true if the player wins,
+    // false if the player dies or input runs out.
+    private static boolean runCombat(Patrol enemy, String enemyName, int enemyDamage, Stratagem loadout, Scanner in) {
+        while (true) {
+            System.out.println("Please pick one of the combat options: PRIMARY, SECONDARY, "
+                    + loadout.getStratagemOne() + ", " + loadout.getStratagemTwo() + ", "
+                    + loadout.getStratagemThree() + ", " + loadout.getStratagemFour() + ", MEELEE");
+            if (!in.hasNextLine()) return false;
+            String attack = in.nextLine().trim();
+
+            boolean isEquippedStratagem = attack.equalsIgnoreCase(loadout.getStratagemOne())
+                    || attack.equalsIgnoreCase(loadout.getStratagemTwo())
+                    || attack.equalsIgnoreCase(loadout.getStratagemThree())
+                    || attack.equalsIgnoreCase(loadout.getStratagemFour());
+            boolean isStandardAttack = attack.equalsIgnoreCase("PRIMARY")
+                    || attack.equalsIgnoreCase("SECONDARY")
+                    || attack.equalsIgnoreCase("MEELEE");
+
+            if (!isEquippedStratagem && !isStandardAttack) {
+                System.out.println("Invalid command or stratagem not in your loadout.");
+                continue;
+            }
+
+            Attack chosen = makeAttack(attack);
+            if (isStandardAttack) {
+                System.out.println("Please press W to confirm the " + chosen.attackName + ".");
+            } else {
+                System.out.println("Please enter the stratagem code for the " + chosen.attackName + ".");
+            }
+            if (!in.hasNextLine()) return false;
+            String confirm = in.nextLine().trim();
+            if (!confirm.equalsIgnoreCase(chosen.stratagemCode)) {
+                System.out.println("Enter a valid stratagem code.");
+                continue;
+            }
+
+            System.out.println("You used the " + chosen.attackName + ".");
+            if (attack.equalsIgnoreCase("ORAIL")) {
+                enemy.combinedHealth -= enemy.strongestMemberHealth;
+            } else {
+                enemy.combinedHealth -= (chosen.attackDamage - chosen.Stratagemdeviation);
+            }
+
+            // Only stratagems are strong enough to take out a fabricator
+            if (!isStandardAttack && enemy.fabricators > 0) {
+                enemy.fabricators--;
+                System.out.println("You destroyed a fabricator! " + enemy.fabricators + " remaining.");
+            }
+
+            if (enemy.combinedHealth <= 0) {
+                System.out.println("You defeated the " + enemyName + "!");
+                return true;
+            }
+
+            if (enemy.fabricators > 0) {
+                int reinforcement = 100 * enemy.fabricators;
+                enemy.combinedHealth += reinforcement;
+                System.out.println("The fabricators deploy reinforcements! (+" + reinforcement + " health)");
+            }
+
+            System.out.println("The " + enemyName + " has " + enemy.combinedHealth + " health remaining. It has "
+                    + enemy.patrolMembers + " members. Its strongest member is a " + enemy.strongestMember + ".");
+            if (enemy.fabricators > 0) {
+                System.out.println("Fabricators remaining: " + enemy.fabricators);
+            }
+            System.out.println("The " + enemyName + " attacks you!");
+            int damageTaken = enemyDamage + (int) (Math.random()*50);
+            playerhealth -= damageTaken;
+            System.out.println("You took " + damageTaken + " damage. Health: " + Math.max(playerhealth, 0) + "/" + MAX_PLAYER_HEALTH);
+            if (playerhealth <= 0) {
+                System.out.println("You have been defeated by the " + enemyName + ".");
+                return false;
+            }
+        }
+    }
+
 public static void main(String[] args) {
-        
+
         // Create a 10x5 map using '.' as grass/empty space
         AsciiMap map = new AsciiMap(10, 7, '.');
         char[] encampmentlist = { '0', '1', '2', '3', '4', '5', '6', '7'};
         char[] symbolList = {'A', 'L', 'M', 'B', '.', '.', '.'}; //A for SEAF Artillery, L for LIDAR, M for SAMSITE, B for Terminate Illegal Broadcast, and * for sample POIs
         char[] objectiveList = {'D', 'S', 'N', 'C', 'R'}; //Destroy Transmission Network, Secure Blackbox, Secure Evidence, Neutralise Orbital Defenses, Destroy Command Bunker, Sabotage Supply Bases
-        
+
 
         int poi1 = (int) (Math.random() * symbolList.length);
         int poi2 = (int) (Math.random() * symbolList.length);
@@ -106,21 +227,20 @@ public static void main(String[] args) {
         int camp4 = (int) (Math.random() * encampmentlist.length);
 
         int objective = (int) (Math.random() * objectiveList.length);
-
         // Edit the map by adding structures/characters
-       
-        map.setTile((int) (Math.random() * map.width),(int) (Math.random() * map.height), symbolList[poi1]);
-        map.setTile((int) (Math.random() * map.width),(int) (Math.random() * map.height), symbolList[poi2]);
-        map.setTile((int) (Math.random() * map.width),(int) (Math.random() * map.height), symbolList[poi3]);
-        map.setTile((int) (Math.random() * map.width),(int) (Math.random() * map.height), symbolList[poi4]);
+
+        map.placeOnEmptyTile(symbolList[poi1]);
+        map.placeOnEmptyTile(symbolList[poi2]);
+        map.placeOnEmptyTile(symbolList[poi3]);
+        map.placeOnEmptyTile(symbolList[poi4]);
         char currentObjective = objectiveList[objective];
-        map.setTile((int) (Math.random() * map.width),(int) (Math.random() * map.height), currentObjective);
-        map.setTile((int) (Math.random() * map.width),(int) (Math.random() * map.height),encampmentlist[camp1]);
-        map.setTile((int) (Math.random() * map.width),(int) (Math.random() * map.height),encampmentlist[camp2]);
-        map.setTile((int) (Math.random() * map.width),(int) (Math.random() * map.height),encampmentlist[camp3]);
-        map.setTile((int) (Math.random() * map.width),(int) (Math.random() * map.height),encampmentlist[camp4]);
+        map.placeOnEmptyTile(currentObjective);
+        map.placeOnEmptyTile(encampmentlist[camp1]);
+        map.placeOnEmptyTile(encampmentlist[camp2]);
+        map.placeOnEmptyTile(encampmentlist[camp3]);
+        map.placeOnEmptyTile(encampmentlist[camp4]);
         map.placePlayer(map.playerx, map.playery);
-        
+
         // Collect four valid stratagem entries before displaying the map.
         try (Scanner playermove = new Scanner(System.in)) {
         String[] validStratagems = {"500K", "ESTRIKE", "ORAIL", "OLASER", "OBURST", "PODS"};
@@ -155,7 +275,7 @@ public static void main(String[] args) {
         Stratagem loadout = new Stratagem(entries[0], entries[1], entries[2], entries[3]);
         System.out.println("Loadout: " + String.join(", ", entries));
 
-        // Keep using this generated map until combat or the objective is reached.
+        // Keep using this generated map until the player dies or the objective is reached.
         map.draw();
         boolean gameOver = false;
 
@@ -199,121 +319,58 @@ public static void main(String[] args) {
                 }
 
             }
-            
+
 else if (tile != '.' && containsSymbol(encampmentlist, tile)) {
-            System.out.println("You have reached an encampment, difficulty " + tile);
+            int difficulty = tile - '0';
+            System.out.println("You have reached an encampment, difficulty " + difficulty);
                     String[] enemyList = {"Marauder", "Devastator", "Hulk", "WarStrider"};
                     int randomEnemyType = (int) (Math.random() * enemyList.length);
-                    int patrolSize = (3*(tile - '0')) + (int) (Math.random() * 20);
+                    int patrolSize = (3*difficulty) + (int) (Math.random() * 20);
                     int patrolHealth;
-                    if (enemyList[randomEnemyType].equals("Marauder")) {patrolHealth = 150 + (patrolSize - 1) * 100;} 
-                        else if (enemyList[randomEnemyType].equals("Devastator")) {patrolHealth = 500 + (patrolSize - 1) * 100;} 
-                        else if (enemyList[randomEnemyType].equals("Hulk")) {patrolHealth = 1000 + (patrolSize - 1) * 100;} 
-                        else {patrolHealth = 5000 + (patrolSize - 1) * 100;} 
-                    Patrol encampmentGuards = new Patrol(patrolHealth, patrolSize, enemyList[randomEnemyType]);
+                    if (enemyList[randomEnemyType].equals("Marauder")) {patrolHealth = 150 + (patrolSize - 1) * 100;}
+                        else if (enemyList[randomEnemyType].equals("Devastator")) {patrolHealth = 500 + (patrolSize - 1) * 100;}
+                        else if (enemyList[randomEnemyType].equals("Hulk")) {patrolHealth = 1000 + (patrolSize - 1) * 100;}
+                        else {patrolHealth = 5000 + (patrolSize - 1) * 100;}
+                    int fabricators = 1 + difficulty / 2;
+                    int enemyDamage = 50 + 25 * difficulty;
+                    Patrol encampmentGuards = new Patrol(patrolHealth, patrolSize, enemyList[randomEnemyType],
+                            unitHealth(enemyList[randomEnemyType]), fabricators);
                     System.out.println("Health: " + encampmentGuards.combinedHealth);
                     System.out.println("Size: " + encampmentGuards.patrolMembers);
                     System.out.println("Strongest member: " + encampmentGuards.strongestMember);
-                gameOver = true;
+                    System.out.println("Strongest member health: " + encampmentGuards.strongestMemberHealth);
+                    System.out.println("Fabricators: " + encampmentGuards.fabricators + " (only stratagems can destroy them)");
+                if (runCombat(encampmentGuards, "Automaton Encampment", enemyDamage, loadout, playermove)) {
+                    map.clearTileUnderPlayer();
+                    int healed = Math.min(50 + 50 * difficulty, MAX_PLAYER_HEALTH - playerhealth);
+                    playerhealth += healed;
+                    System.out.println("Encampment cleared! You recovered " + healed + " health. Health: "
+                            + playerhealth + "/" + MAX_PLAYER_HEALTH);
+                } else {
+                    gameOver = true;
+                }
             }
 
 else if (tile == '.') {
 int enemyRoll = map.enemyRandom.nextInt(10);
-if (enemyRoll >= 8) {
-                    System.out.println("big patrol combat");
+if (enemyRoll >= 7) {
+                    System.out.println("You are now in combat with an Automaton Patrol!");
                     String[] enemyList = {"Soldier", "Meelee", "Marauder", "Devastator", "Hulk"};
                     int randomEnemyType = (int) (Math.random() * enemyList.length);
                     int patrolSize = 10 + (int) (Math.random() * 20);
-                    int patrolHealth;
-                    if (enemyList[randomEnemyType].equals("Soldier")) {patrolHealth = 100 + (patrolSize - 1) * 100;} 
-                        else if (enemyList[randomEnemyType].equals("Meelee")) {patrolHealth = 150 + (patrolSize - 1) * 100;} 
-                        else if (enemyList[randomEnemyType].equals("Marauder")) {patrolHealth = 150 + (patrolSize - 1) * 100;} 
-                        else if (enemyList[randomEnemyType].equals("Devastator")) {patrolHealth = 500 + (patrolSize - 1) * 100;} 
-                        else {patrolHealth = 1000 + (patrolSize - 1) * 100;}
-                        Patrol bigPatrol = new Patrol(patrolHealth, patrolSize, enemyList[randomEnemyType]);
+                    String enemyType = enemyList[randomEnemyType];
+                    int strongestHealth = unitHealth(enemyType);
+                    int patrolHealth = strongestHealth + (patrolSize - 1) * 100;
+                        Patrol bigPatrol = new Patrol(patrolHealth, patrolSize, enemyType, strongestHealth);
                         System.out.println("Health: " + bigPatrol.combinedHealth);
                         System.out.println("Size: " + bigPatrol.patrolMembers);
                         System.out.println("Strongest member: " + bigPatrol.strongestMember);
-                boolean combat = true;
-                while (combat) {
-                    // Print the prompt first; hasNextLine() blocks, so calling it in the
-                    // loop condition made the game wait for input before showing this.
-                    System.out.println("Please pick one of the combat options: PRIMARY, SECONDARY, "
-                            + loadout.getStratagemOne() + ", " + loadout.getStratagemTwo() + ", "
-                            + loadout.getStratagemThree() + ", " + loadout.getStratagemFour() + ", MEELEE");
-                    if (!playermove.hasNextLine()) break;
-                    String attack = playermove.nextLine().trim();
-
-                    boolean isEquippedStratagem = attack.equalsIgnoreCase(loadout.getStratagemOne())
-                            || attack.equalsIgnoreCase(loadout.getStratagemTwo())
-                            || attack.equalsIgnoreCase(loadout.getStratagemThree())
-                            || attack.equalsIgnoreCase(loadout.getStratagemFour());
-                    boolean isStandardAttack = attack.equalsIgnoreCase("PRIMARY")
-                            || attack.equalsIgnoreCase("SECONDARY")
-                            || attack.equalsIgnoreCase("MEELEE");
-
-                    if (!isEquippedStratagem && !isStandardAttack) {
-                        System.out.println("Invalid command or stratagem not in your loadout.");
-                        continue;
-                    }
-
-                    if (attack.equalsIgnoreCase("OBURST")) {
-                        System.out.println("You used orbital airburst.");
-                        int burstDeviation = 250- (int) (Math.random()*50);
-                        bigPatrol.combinedHealth -= burstDeviation;
-                    } 
-
-                    else if(attack.equalsIgnoreCase("500K")) {
-                        System.out.println("You used a 500kg bomb.");
-                        int bombDeviation = 1000 - (int) (Math.random()*50);
-                        bigPatrol.combinedHealth -= bombDeviation;
-                    }
-
-                    else if(attack.equalsIgnoreCase("ESTRIKE")) {
-                        System.out.println("You used an eagle airstrike.");
-                        int strikeDeviation = 750 - (int) (Math.random()*50);
-                        bigPatrol.combinedHealth -= strikeDeviation;
-                    }
-
-                    else if(attack.equalsIgnoreCase("ORAIL")) {
-                        System.out.println("You used an orbital railgun.");
-                        int railDeviation = 1500;
-                        bigPatrol.combinedHealth -= railDeviation;
-                        }
-
-                    else if(attack.equalsIgnoreCase("OLASER")) {
-                        System.out.println("You used an orbital laser.");
-                        int laserDeviation = 500 - (int) (Math.random()*50);
-                        bigPatrol.combinedHealth -= laserDeviation;
-                        }
-
-                    else if(attack.equalsIgnoreCase("PODS")) {
-                        int podDeviation = 150 - (int) (Math.random()*50);
-                        System.out.println("You used 100mm rocket pods.");
-                        bigPatrol.combinedHealth -= podDeviation;
-                        }
-                    if(bigPatrol.combinedHealth <= 0){
-                        System.out.println("You defeated the Automaton Patrol!");
-                        combat = false;
-                    }
+                if (runCombat(bigPatrol, "Automaton Patrol", 100, loadout, playermove)) {
+                    map.clearTileUnderPlayer();
+                } else {
+                    gameOver = true;
                 }
             }
- else if (enemyRoll >= 7) {
-                    System.out.println("small patrol combat");
-                    String[] enemyList = {"Soldier", "Meelee", "Marauder", "Devastator", "Hulk"};
-                    int randomEnemyType = (int) (Math.random() * enemyList.length);
-                    int patrolSize = 5 + (int) (Math.random() * 10);
-                    int patrolHealth;
-                    if (enemyList[randomEnemyType].equals("Soldier")) {patrolHealth = 100 + (patrolSize - 1) * 100;} 
-                        else if (enemyList[randomEnemyType].equals("Meelee")) {patrolHealth = 150 + (patrolSize - 1) * 100;} 
-                        else if (enemyList[randomEnemyType].equals("Marauder")) {patrolHealth = 150 + (patrolSize - 1) * 100;} 
-                        else if (enemyList[randomEnemyType].equals("Devastator")) {patrolHealth = 500 + (patrolSize - 1) * 100;} 
-                        else {patrolHealth = 1000 + (patrolSize - 1) * 100;}
-                        Patrol smallPatrol = new Patrol(patrolHealth, patrolSize, enemyList[randomEnemyType]);
-                        System.out.println("Health: " + smallPatrol.combinedHealth);
-                        System.out.println("Size: " + smallPatrol.patrolMembers);
-                        System.out.println("Strongest member: " + smallPatrol.strongestMember);
-                }
-            }
+        }
         }
     }}}
