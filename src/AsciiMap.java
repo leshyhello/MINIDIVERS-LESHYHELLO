@@ -14,8 +14,21 @@ public class AsciiMap {
     private char tileUnderPlayer;
     private boolean playerPlaced;
 
-    static final int MAX_PLAYER_HEALTH = 1000;
+    static final int MAX_PLAYER_HEALTH = 750;
     static int playerhealth = MAX_PLAYER_HEALTH;
+
+    static final int MAX_STIMS = 4;
+    static final int STIM_HEAL = 300;
+    static int stims = MAX_STIMS;
+    static final int MAX_RESUPPLIES = 4;
+    static int resupplies = MAX_RESUPPLIES;
+
+    // Heals the player without going over max health. Returns how much was actually healed.
+    static int heal(int amount) {
+        int healed = Math.min(amount, MAX_PLAYER_HEALTH - playerhealth);
+        playerhealth += healed;
+        return healed;
+    }
 
     public char getTileUnderPlayer() {
     return tileUnderPlayer;}
@@ -102,15 +115,13 @@ private static boolean containsSymbol(char[] symbols, char tile) {
         return false;
     }
 
-    // Build the attack for a combat option, with its random deviation already rolled.
-    // Returns null for an unknown name.
     private static Attack makeAttack(String name) {
         switch (name.toUpperCase()) {
-            case "OBURST":    return new Attack("WDSDS", 1000, (int) (Math.random()*50), "orbital airburst strike");
-            case "500K":      return new Attack("WDSSS", 5000, (int) (Math.random()*50), "500K bomb");
+            case "OBURST":    return new Attack("DDD", 1000, (int) (Math.random()*50), "orbital airburst strike");
+            case "500K":      return new Attack("WDSSS", 1750, (int) (Math.random()*250), "500K bomb");
             case "ESTRIKE":   return new Attack("WDSD", 750, (int) (Math.random()*50), "eagle airstrike");
             case "ORAIL":     return new Attack("DWSSD", 150, 0, "orbital railcannon");
-            case "OLASER":    return new Attack("DSWDS", 2000, (int) (Math.random()*50), "orbital laser");
+            case "OLASER":    return new Attack("DSWDS", 950, (int) (Math.random()*50), "orbital laser");
             case "PODS":      return new Attack("WDWA", 150, (int) (Math.random()*50), "eagle 110mm rocket pods");
             case "PRIMARY":   return new Attack("W", 50, (int) (Math.random()*10), "primary weapon");
             case "SECONDARY": return new Attack("W", 30, (int) (Math.random()*20), "secondary weapon");
@@ -119,7 +130,6 @@ private static boolean containsSymbol(char[] symbols, char tile) {
         }
     }
 
-    // Single-unit health for each enemy type, used by the orbital railcannon
     private static int unitHealth(String enemyType) {
         switch (enemyType) {
             case "Soldier":    return 100;
@@ -127,19 +137,58 @@ private static boolean containsSymbol(char[] symbols, char tile) {
             case "Marauder":   return 150;
             case "Devastator": return 500;
             case "Hulk":       return 1000;
-            default:           return 5000; // WarStrider
+            default:           return 5000;
         }
     }
 
-    // Runs a fight until one side is dead. Returns true if the player wins,
-    // false if the player dies or input runs out.
+    private static boolean enemyTurn(Patrol enemy, String enemyName, int enemyDamage) {
+        System.out.println("The " + enemyName + " attacks you!");
+        int damageTaken = enemy.scaleDamage(enemyDamage + (int) (Math.random()*50));
+        playerhealth -= damageTaken;
+        System.out.println("You took " + damageTaken + " damage. Health: " + Math.max(playerhealth, 0) + "/" + MAX_PLAYER_HEALTH);
+        if (playerhealth <= 0) {
+            System.out.println("You have been defeated by the " + enemyName + ".");
+            return false;
+        }
+        return true;
+    }
+
     private static boolean runCombat(Patrol enemy, String enemyName, int enemyDamage, Stratagem loadout, Scanner in) {
         while (true) {
             System.out.println("Please pick one of the combat options: PRIMARY, SECONDARY, "
                     + loadout.getStratagemOne() + ", " + loadout.getStratagemTwo() + ", "
-                    + loadout.getStratagemThree() + ", " + loadout.getStratagemFour() + ", MEELEE");
+                    + loadout.getStratagemThree() + ", " + loadout.getStratagemFour() + ", MEELEE, "
+                    + "STIM (" + stims + " left), " + "RESUPPLY (" + resupplies + " left). NOTE: Use WASD to input the codes, as you would in the base game.");
             if (!in.hasNextLine()) return false;
             String attack = in.nextLine().trim();
+
+            if (attack.equalsIgnoreCase("STIM")) {
+                if (stims <= 0) {
+                    System.out.println("You're out of stims!");
+                    continue;
+                }
+                if (playerhealth == MAX_PLAYER_HEALTH) {
+                    System.out.println("You're already at full health.");
+                    continue;
+                }
+                stims--;
+                int healed = heal(STIM_HEAL);
+                System.out.println("You used a stim and recovered " + healed + " health. Health: "
+                        + playerhealth + "/" + MAX_PLAYER_HEALTH + ". Stims left: " + stims);
+                if (!enemyTurn(enemy, enemyName, enemyDamage)) return false;
+                continue;
+
+            } else if (attack.equalsIgnoreCase("RESUPPLY")) {
+                if (resupplies <= 0) {
+                    System.out.println("You're out of resupplies!");
+                    continue;
+                }
+                resupplies--;
+                stims = MAX_STIMS;
+                System.out.println("You used a resupply and restored your stims. Stims: " + stims + ". Resupplies left: " + resupplies);
+                if (!enemyTurn(enemy, enemyName, enemyDamage)) return false;
+                continue;
+            }
 
             boolean isEquippedStratagem = attack.equalsIgnoreCase(loadout.getStratagemOne())
                     || attack.equalsIgnoreCase(loadout.getStratagemTwo())
@@ -168,13 +217,19 @@ private static boolean containsSymbol(char[] symbols, char tile) {
             }
 
             System.out.println("You used the " + chosen.attackName + ".");
+            int membersBefore = enemy.patrolMembers;
             if (attack.equalsIgnoreCase("ORAIL")) {
-                enemy.combinedHealth -= enemy.strongestMemberHealth;
+                if (enemy.railcannonStrike()) {
+                    System.out.println("The railcannon destroyed the " + enemy.strongestMember + "!");
+                }
             } else {
-                enemy.combinedHealth -= (chosen.attackDamage - chosen.Stratagemdeviation);
+                enemy.takeDamage(chosen.attackDamage - chosen.Stratagemdeviation);
+            }
+            int killed = membersBefore - enemy.patrolMembers;
+            if (killed > 0) {
+                System.out.println("You killed " + killed + (killed == 1 ? " enemy." : " enemies."));
             }
 
-            // Only stratagems are strong enough to take out a fabricator
             if (!isStandardAttack && enemy.fabricators > 0) {
                 enemy.fabricators--;
                 System.out.println("You destroyed a fabricator! " + enemy.fabricators + " remaining.");
@@ -186,33 +241,27 @@ private static boolean containsSymbol(char[] symbols, char tile) {
             }
 
             if (enemy.fabricators > 0) {
-                int reinforcement = 100 * enemy.fabricators;
-                enemy.combinedHealth += reinforcement;
-                System.out.println("The fabricators deploy reinforcements! (+" + reinforcement + " health)");
+                enemy.addGrunts(enemy.fabricators);
+                System.out.println("The fabricators deploy " + enemy.fabricators + " reinforcements! (+"
+                        + enemy.fabricators * Patrol.GRUNT_HEALTH + " health)");
             }
 
             System.out.println("The " + enemyName + " has " + enemy.combinedHealth + " health remaining. It has "
-                    + enemy.patrolMembers + " members. Its strongest member is a " + enemy.strongestMember + ".");
+                    + enemy.patrolMembers + " members. "
+                    + (enemy.strongestAlive ? "Its strongest member is a " + enemy.strongestMember + "."
+                                            : "Its " + enemy.strongestMember + " has been destroyed."));
             if (enemy.fabricators > 0) {
                 System.out.println("Fabricators remaining: " + enemy.fabricators);
             }
-            System.out.println("The " + enemyName + " attacks you!");
-            int damageTaken = enemyDamage + (int) (Math.random()*50);
-            playerhealth -= damageTaken;
-            System.out.println("You took " + damageTaken + " damage. Health: " + Math.max(playerhealth, 0) + "/" + MAX_PLAYER_HEALTH);
-            if (playerhealth <= 0) {
-                System.out.println("You have been defeated by the " + enemyName + ".");
-                return false;
-            }
+            if (!enemyTurn(enemy, enemyName, enemyDamage)) return false;
         }
     }
 
 public static void main(String[] args) {
 
-        // Create a 10x5 map using '.' as grass/empty space
         AsciiMap map = new AsciiMap(10, 7, '.');
         char[] encampmentlist = { '0', '1', '2', '3', '4', '5', '6', '7'};
-        char[] symbolList = {'A', 'L', 'M', 'B', '.', '.', '.'}; //A for SEAF Artillery, L for LIDAR, M for SAMSITE, B for Terminate Illegal Broadcast, and * for sample POIs
+        char[] symbolList = {'A', 'L', 'L', 'M', 'B', '.', '.', '.'}; //A for SEAF Artillery, L for LIDAR (listed twice so it generates more often), M for SAMSITE, B for Terminate Illegal Broadcast, and * for sample POIs
         char[] objectiveList = {'D', 'S', 'N', 'C', 'R'}; //Destroy Transmission Network, Secure Blackbox, Secure Evidence, Neutralise Orbital Defenses, Destroy Command Bunker, Sabotage Supply Bases
 
 
@@ -264,7 +313,7 @@ public static void main(String[] args) {
                     }
                 }
                 if (match != null) {
-                    entries[i] = match; // store the canonical spelling, e.g. "ESTRIKE" not "estrike"
+                    entries[i] = match;
                     System.out.println("  Equipped " + match + ".");
                     break;
                 }
@@ -275,7 +324,6 @@ public static void main(String[] args) {
         Stratagem loadout = new Stratagem(entries[0], entries[1], entries[2], entries[3]);
         System.out.println("Loadout: " + String.join(", ", entries));
 
-        // Keep using this generated map until the player dies or the objective is reached.
         map.draw();
         boolean gameOver = false;
 
@@ -309,7 +357,46 @@ public static void main(String[] args) {
                     //minigame
                 }
                 if(tile == 'L'){
-                    //minigame
+                    System.out.println("Please press 'W' to activate the LIDAR.");
+                    // On any failure the LIDAR tile stays on the map so the player can come back and retry
+                    if (!playermove.hasNextLine()) break;
+                    String answr = playermove.nextLine().trim();
+                    if (answr.equalsIgnoreCase("W")) {
+                        System.out.println("LIDAR activating...");
+                        for (int i = 0; i <= 20; i++) {
+                            String bar = "#".repeat(i) + "-".repeat(20 - i);
+                            System.out.print("\rACTIVATING... [" + bar + "] " + (i * 5) + "%");
+                            System.out.flush();
+                            try { Thread.sleep(150); } catch (InterruptedException e) { }
+                        }
+                        System.out.println();
+                        String code = String.format("%05d", (int)(Math.random()*100000));
+                        System.out.println("This is a single-use LIDAR code. Remember it for future reference: " + code + ".");
+                        System.out.println("Please press 'W' to confirm the LIDAR activation.");
+                        if (!playermove.hasNextLine()) break;
+                        if(playermove.nextLine().trim().equalsIgnoreCase("W")) {
+                            // Move the cursor up 3 lines (code, prompt, typed "W") and erase everything below it
+                            System.out.print("\033[3A\033[0J");
+                            System.out.flush();
+                            System.out.println("Input your 5-digit LIDAR code to confirm: ");
+                                if(playermove.hasNextLine()) {
+                                    String inputCode = playermove.nextLine().trim();
+                                    if(inputCode.equals(code)) {
+                                        System.out.println("LIDAR confirmed. Subobjective Completed.");
+                                        map.clearTileUnderPlayer();
+                                    } else {
+                                        System.out.println("Incorrect code. LIDAR not activated.");
+                                    }
+                                } else {
+                                    System.out.println("No input received. LIDAR not activated.");
+                                    break;
+                                }
+                        } else {
+                            System.out.println("Invalid input. LIDAR not activated.");
+                        }
+                    } else {
+                        System.out.println("Invalid input. LIDAR not activated.");
+                    }
                 }
                 if(tile == 'M'){
                     //minigame
@@ -367,6 +454,10 @@ if (enemyRoll >= 7) {
                         System.out.println("Strongest member: " + bigPatrol.strongestMember);
                 if (runCombat(bigPatrol, "Automaton Patrol", 100, loadout, playermove)) {
                     map.clearTileUnderPlayer();
+                    int patrolHealed = Math.min(50, MAX_PLAYER_HEALTH - playerhealth);
+                    playerhealth += patrolHealed;
+                    System.out.println("Patrol defeated! You recovered " + patrolHealed + " health. Health: "
+                            + playerhealth + "/" + MAX_PLAYER_HEALTH);
                 } else {
                     gameOver = true;
                 }
