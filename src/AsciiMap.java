@@ -400,6 +400,7 @@ public static void main(String[] args) {
                 }
                 if(tile == 'L'){
                     System.out.println("Please press 'W' to activate the LIDAR.");
+                    // On any failure the LIDAR tile stays on the map so the player can come back and retry
                     if (!playermove.hasNextLine()) break;
                     String answr = playermove.nextLine().trim();
                     if (answr.equalsIgnoreCase("W")) {
