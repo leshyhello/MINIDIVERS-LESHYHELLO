@@ -145,25 +145,20 @@ private static boolean containsSymbol(char[] symbols, char tile) {
         }
     }
 
-    private static boolean enemyTurn(Patrol enemy, String enemyName, int enemyDamage) {
+    private static boolean enemyTurn(Patrol enemy, String enemyName, int enemyDamage, Scanner in) {
         System.out.println("The " + enemyName + " attacks you! Would you like to try to dodge? (Y/N)");
         int damageTaken = enemy.scaleDamage(enemyDamage + (int) (Math.random()*50));
-        playerhealth -= damageTaken;
-        Scanner dodgeScanner = new Scanner(System.in);
-        if (dodgeScanner.hasNextLine()) {
-            String dodgeChoice = dodgeScanner.nextLine().trim();
-            if (dodgeChoice.equalsIgnoreCase("Y")) {
-                int dodgeRoll = (int) (Math.random() * 100);
-                if (dodgeRoll < 50) { // 50% chance to dodge
-                    System.out.println("You successfully dodged the attack!");
-                    damageTaken = 0;
-                    dodgeScanner.close();
-                } else {
-                      System.out.println("You took " + damageTaken + " damage. Health: " + Math.max(playerhealth, 0) + "/" + MAX_PLAYER_HEALTH);
-                }
+        if (in.hasNextLine() && in.nextLine().trim().equalsIgnoreCase("Y")) {
+            int dodgeRoll = (int) (Math.random() * 100);
+            if (dodgeRoll < 50) { // 50% chance to dodge
+                System.out.println("You successfully dodged the attack!");
+                damageTaken = 0;
+            } else {
+                System.out.println("You failed to dodge!");
             }
         }
-       System.out.println("You ook " + damageTaken + " damage. Health: " + Math.max(playerhealth, 0) + "/" + MAX_PLAYER_HEALTH);
+        playerhealth -= damageTaken;
+        System.out.println("You took " + damageTaken + " damage. Health: " + Math.max(playerhealth, 0) + "/" + MAX_PLAYER_HEALTH);
         if (playerhealth <= 0) {
             System.out.println("You have been defeated by the " + enemyName + ".");
             return false;
@@ -193,7 +188,7 @@ private static boolean containsSymbol(char[] symbols, char tile) {
                 int healed = heal(STIM_HEAL);
                 System.out.println("You used a stim and recovered " + healed + " health. Health: "
                         + playerhealth + "/" + MAX_PLAYER_HEALTH + ". Stims left: " + stims);
-                if (!enemyTurn(enemy, enemyName, enemyDamage)) return false;
+                if (!enemyTurn(enemy, enemyName, enemyDamage, in)) return false;
                 continue;
 
             } else if (attack.equalsIgnoreCase("RESUPPLY")) {
@@ -208,7 +203,7 @@ private static boolean containsSymbol(char[] symbols, char tile) {
                 resupplies--;
                 stims = MAX_STIMS;
                 System.out.println("You used a resupply and restored your stims. Stims: " + stims + ". Resupplies left: " + resupplies);
-                if (!enemyTurn(enemy, enemyName, enemyDamage)) return false;
+                if (!enemyTurn(enemy, enemyName, enemyDamage, in)) return false;
                 continue;
             }
 
@@ -235,7 +230,7 @@ private static boolean containsSymbol(char[] symbols, char tile) {
             String confirm = in.nextLine().trim();
             if (!confirm.equalsIgnoreCase(chosen.stratagemCode)) {
                 System.out.println("Wrong code! The " + chosen.attackName + " failed.");
-                if (!enemyTurn(enemy, enemyName, enemyDamage)) return false;
+                if (!enemyTurn(enemy, enemyName, enemyDamage, in)) return false;
                 continue;
             }
 
@@ -277,7 +272,7 @@ private static boolean containsSymbol(char[] symbols, char tile) {
             if (enemy.fabricators > 0) {
                 System.out.println("Fabricators remaining: " + enemy.fabricators);
             }
-            if (!enemyTurn(enemy, enemyName, enemyDamage)) return false;
+            if (!enemyTurn(enemy, enemyName, enemyDamage, in)) return false;
         }
     }
 
