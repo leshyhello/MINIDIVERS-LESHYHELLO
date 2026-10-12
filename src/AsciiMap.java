@@ -132,20 +132,38 @@ private static boolean containsSymbol(char[] symbols, char tile) {
 
     private static int unitHealth(String enemyType) {
         switch (enemyType) {
-            case "Soldier":    return 100;
-            case "Meelee":     return 150;
+            case "Trooper":    return 100;
+            case "Brawler":     return 150;
             case "Marauder":   return 150;
-            case "Devastator": return 500;
+            case "Devastator": return 200;
+            case "Heavy Devastator": return 500;
             case "Hulk":       return 1000;
-            default:           return 5000;
+            case "Tank" :      return 2000;
+            case "WarStrider": return 5000;
+            case "Factory Strider": return 7500;
+            default:           return 100; // for minimum health and for unknown types
         }
     }
 
     private static boolean enemyTurn(Patrol enemy, String enemyName, int enemyDamage) {
-        System.out.println("The " + enemyName + " attacks you!");
+        System.out.println("The " + enemyName + " attacks you! Would you like to try to dodge? (Y/N)");
         int damageTaken = enemy.scaleDamage(enemyDamage + (int) (Math.random()*50));
         playerhealth -= damageTaken;
-        System.out.println("You took " + damageTaken + " damage. Health: " + Math.max(playerhealth, 0) + "/" + MAX_PLAYER_HEALTH);
+        Scanner dodgeScanner = new Scanner(System.in);
+        if (dodgeScanner.hasNextLine()) {
+            String dodgeChoice = dodgeScanner.nextLine().trim();
+            if (dodgeChoice.equalsIgnoreCase("Y")) {
+                int dodgeRoll = (int) (Math.random() * 100);
+                if (dodgeRoll < 50) { // 50% chance to dodge
+                    System.out.println("You successfully dodged the attack!");
+                    damageTaken = 0;
+                    dodgeScanner.close();
+                } else {
+                      System.out.println("You took " + damageTaken + " damage. Health: " + Math.max(playerhealth, 0) + "/" + MAX_PLAYER_HEALTH);
+                }
+            }
+        }
+       System.out.println("You ook " + damageTaken + " damage. Health: " + Math.max(playerhealth, 0) + "/" + MAX_PLAYER_HEALTH);
         if (playerhealth <= 0) {
             System.out.println("You have been defeated by the " + enemyName + ".");
             return false;
@@ -183,6 +201,10 @@ private static boolean containsSymbol(char[] symbols, char tile) {
                     System.out.println("You're out of resupplies!");
                     continue;
                 }
+                if (stims == MAX_STIMS) {
+                    System.out.println("Your stims are already full.");
+                    continue;
+                }
                 resupplies--;
                 stims = MAX_STIMS;
                 System.out.println("You used a resupply and restored your stims. Stims: " + stims + ". Resupplies left: " + resupplies);
@@ -212,7 +234,8 @@ private static boolean containsSymbol(char[] symbols, char tile) {
             if (!in.hasNextLine()) return false;
             String confirm = in.nextLine().trim();
             if (!confirm.equalsIgnoreCase(chosen.stratagemCode)) {
-                System.out.println("Enter a valid stratagem code.");
+                System.out.println("Wrong code! The " + chosen.attackName + " failed.");
+                if (!enemyTurn(enemy, enemyName, enemyDamage)) return false;
                 continue;
             }
 
@@ -235,7 +258,8 @@ private static boolean containsSymbol(char[] symbols, char tile) {
                 System.out.println("You destroyed a fabricator! " + enemy.fabricators + " remaining.");
             }
 
-            if (enemy.combinedHealth <= 0) {
+            // Fabricators keep producing troops, so they must all be destroyed to win
+            if (enemy.combinedHealth <= 0 && enemy.fabricators == 0) {
                 System.out.println("You defeated the " + enemyName + "!");
                 return true;
             }
@@ -261,7 +285,7 @@ public static void main(String[] args) {
 
         AsciiMap map = new AsciiMap(10, 7, '.');
         char[] encampmentlist = { '0', '1', '2', '3', '4', '5', '6', '7'};
-        char[] symbolList = {'A', 'L', 'L', 'M', 'B', '.', '.', '.'}; //A for SEAF Artillery, L for LIDAR (listed twice so it generates more often), M for SAMSITE, B for Terminate Illegal Broadcast, and * for sample POIs
+        char[] symbolList = {'A', 'L', 'L', 'M', 'B', '.', '.', '.'}; //A for SEAF Artillery, L for LIDAR (listed twice so it generates more often), M for SAMSITE, B for Terminate Illegal Broadcast
         char[] objectiveList = {'D', 'S', 'N', 'C', 'R'}; //Destroy Transmission Network, Secure Blackbox, Secure Evidence, Neutralise Orbital Defenses, Destroy Command Bunker, Sabotage Supply Bases
 
 
@@ -354,11 +378,33 @@ public static void main(String[] args) {
             } else if (tile != '.' && containsSymbol(symbolList, tile)) {
                 System.out.println("You reached a point of interest: " + tile);
                 if(tile == 'A'){
-                    //minigame
+                    System.out.println("Please press 'W' to activate the SEAF Artillery Terminal.");
+                    if (!playermove.hasNextLine()) break;
+                    String answr2 = playermove.nextLine().trim();
+                    if (answr2.equalsIgnoreCase("W")) {
+                        String artyCode = Codebuilder.randomCode(5);
+                        System.out.println("Enter the code to activate the SEAF Artillery Terminal: " + artyCode);
+                        if (!playermove.hasNextLine()) break;
+                        String inputCode = playermove.nextLine().trim();
+                        if (inputCode.equalsIgnoreCase(artyCode)) {
+                            for (int i = 0; i <= 20; i++) {
+                                String bar = "#".repeat(i) + "-".repeat(20 - i);
+                                System.out.print("\rACTIVATING... [" + bar + "] " + (i * 5) + "%");
+                                System.out.flush();
+                                try { Thread.sleep(150); } catch (InterruptedException e) { }
+                            }
+                            System.out.println();
+                            System.out.println("SEAF Artillery Terminal activated! Subobjective Completed.");
+                            map.clearTileUnderPlayer();
+                        } else {
+                            System.out.println("Wrong code! Terminal activation failed.");
+                        }
+                    } else {
+                        System.out.println("Invalid input. SEAF Artillery Terminal not activated.");
+                    }
                 }
                 if(tile == 'L'){
                     System.out.println("Please press 'W' to activate the LIDAR.");
-                    // On any failure the LIDAR tile stays on the map so the player can come back and retry
                     if (!playermove.hasNextLine()) break;
                     String answr = playermove.nextLine().trim();
                     if (answr.equalsIgnoreCase("W")) {
@@ -410,14 +456,10 @@ public static void main(String[] args) {
 else if (tile != '.' && containsSymbol(encampmentlist, tile)) {
             int difficulty = tile - '0';
             System.out.println("You have reached an encampment, difficulty " + difficulty);
-                    String[] enemyList = {"Marauder", "Devastator", "Hulk", "WarStrider"};
+                    String[] enemyList = { "Trooper","Brawler","Marauder","Devastator","Heavy Devastator","Hulk","Tank","WarStrider","Factory Strider" };
                     int randomEnemyType = (int) (Math.random() * enemyList.length);
-                    int patrolSize = (3*difficulty) + (int) (Math.random() * 20);
-                    int patrolHealth;
-                    if (enemyList[randomEnemyType].equals("Marauder")) {patrolHealth = 150 + (patrolSize - 1) * 100;}
-                        else if (enemyList[randomEnemyType].equals("Devastator")) {patrolHealth = 500 + (patrolSize - 1) * 100;}
-                        else if (enemyList[randomEnemyType].equals("Hulk")) {patrolHealth = 1000 + (patrolSize - 1) * 100;}
-                        else {patrolHealth = 5000 + (patrolSize - 1) * 100;}
+                    int patrolSize = Math.max(1, (3*difficulty) + (int) (Math.random() * 20));
+                    int patrolHealth = unitHealth(enemyList[randomEnemyType]) + (patrolSize - 1) * Patrol.GRUNT_HEALTH;
                     int fabricators = 1 + difficulty / 2;
                     int enemyDamage = 50 + 25 * difficulty;
                     Patrol encampmentGuards = new Patrol(patrolHealth, patrolSize, enemyList[randomEnemyType],
@@ -442,7 +484,7 @@ else if (tile == '.') {
 int enemyRoll = map.enemyRandom.nextInt(10);
 if (enemyRoll >= 7) {
                     System.out.println("You are now in combat with an Automaton Patrol!");
-                    String[] enemyList = {"Soldier", "Meelee", "Marauder", "Devastator", "Hulk"};
+                    String[] enemyList = { "Trooper","Brawler","Marauder","Devastator","Heavy Devastator","Hulk","Tank","WarStrider"};
                     int randomEnemyType = (int) (Math.random() * enemyList.length);
                     int patrolSize = 10 + (int) (Math.random() * 20);
                     String enemyType = enemyList[randomEnemyType];
