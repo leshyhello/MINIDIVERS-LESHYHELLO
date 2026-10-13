@@ -23,7 +23,6 @@ public class AsciiMap {
     static final int MAX_RESUPPLIES = 4;
     static int resupplies = MAX_RESUPPLIES;
 
-    // Heals the player without going over max health. Returns how much was actually healed.
     static int heal(int amount) {
         int healed = Math.min(amount, MAX_PLAYER_HEALTH - playerhealth);
         playerhealth += healed;
@@ -34,7 +33,7 @@ public class AsciiMap {
     return tileUnderPlayer;}
 
     public void clearTileUnderPlayer() {
-    tileUnderPlayer = emptyChar;   // emptyChar is '.' for your map
+    tileUnderPlayer = emptyChar;
 }
 
     // Initialize the map with a default empty character
@@ -45,7 +44,7 @@ public class AsciiMap {
         this.grid = new char[height][width];
         clearMap();
     }
-    // Fill the entire map with the empty character
+
     public void clearMap() {
         for (int i = 0; i < height; i++) {
             Arrays.fill(grid[i], emptyChar);
@@ -125,7 +124,7 @@ private static boolean containsSymbol(char[] symbols, char tile) {
             case "PODS":      return new Attack("WDWA", 150, (int) (Math.random()*50), "eagle 110mm rocket pods");
             case "PRIMARY":   return new Attack("W", 50, (int) (Math.random()*10), "primary weapon");
             case "SECONDARY": return new Attack("W", 30, (int) (Math.random()*20), "secondary weapon");
-            case "MEELEE":    return new Attack("W", 150, (int) (Math.random()*50), "meelee attack");
+            case "MELEE":    return new Attack("W", 150, (int) (Math.random()*50), "melee attack");
             default:          return null;
         }
     }
@@ -170,7 +169,7 @@ private static boolean containsSymbol(char[] symbols, char tile) {
         while (true) {
             System.out.println("Please pick one of the combat options: PRIMARY, SECONDARY, "
                     + loadout.getStratagemOne() + ", " + loadout.getStratagemTwo() + ", "
-                    + loadout.getStratagemThree() + ", " + loadout.getStratagemFour() + ", MEELEE, "
+                    + loadout.getStratagemThree() + ", " + loadout.getStratagemFour() + ", MELEE, "
                     + "STIM (" + stims + " left), " + "RESUPPLY (" + resupplies + " left). NOTE: Use WASD to input the codes, as you would in the base game.");
             if (!in.hasNextLine()) return false;
             String attack = in.nextLine().trim();
@@ -184,6 +183,7 @@ private static boolean containsSymbol(char[] symbols, char tile) {
                     System.out.println("You're already at full health.");
                     continue;
                 }
+                loadout.tickCooldowns();
                 stims--;
                 int healed = heal(STIM_HEAL);
                 System.out.println("You used a stim and recovered " + healed + " health. Health: "
@@ -200,6 +200,7 @@ private static boolean containsSymbol(char[] symbols, char tile) {
                     System.out.println("Your stims are already full.");
                     continue;
                 }
+                loadout.tickCooldowns();
                 resupplies--;
                 stims = MAX_STIMS;
                 System.out.println("You used a resupply and restored your stims. Stims: " + stims + ". Resupplies left: " + resupplies);
@@ -213,13 +214,18 @@ private static boolean containsSymbol(char[] symbols, char tile) {
                     || attack.equalsIgnoreCase(loadout.getStratagemFour());
             boolean isStandardAttack = attack.equalsIgnoreCase("PRIMARY")
                     || attack.equalsIgnoreCase("SECONDARY")
-                    || attack.equalsIgnoreCase("MEELEE");
+                    || attack.equalsIgnoreCase("MELEE");
 
             if (!isEquippedStratagem && !isStandardAttack) {
                 System.out.println("Invalid command or stratagem not in your loadout.");
                 continue;
             }
+            if (isEquippedStratagem && loadout.getCooldown(attack) > 0) {
+                System.out.println(attack.toUpperCase() + " is on cooldown for " + loadout.getCooldown(attack) + " more turn(s).");
+                continue;
+            }
 
+            loadout.tickCooldowns();
             Attack chosen = makeAttack(attack);
             if (isStandardAttack) {
                 System.out.println("Please press W to confirm the " + chosen.attackName + ".");
@@ -235,6 +241,9 @@ private static boolean containsSymbol(char[] symbols, char tile) {
             }
 
             System.out.println("You used the " + chosen.attackName + ".");
+            if (isEquippedStratagem) {
+                loadout.startCooldown(attack);
+            }
             int membersBefore = enemy.patrolMembers;
             if (attack.equalsIgnoreCase("ORAIL")) {
                 if (enemy.railcannonStrike()) {
@@ -331,6 +340,10 @@ public static void main(String[] args) {
                         break;
                     }
                 }
+                if (match != null && Arrays.asList(entries).contains(match)) {
+                    System.out.println("  " + match + " is already equipped. Choose a different stratagem.");
+                    continue;
+                }
                 if (match != null) {
                     entries[i] = match;
                     System.out.println("  Equipped " + match + ".");
@@ -347,16 +360,16 @@ public static void main(String[] args) {
         boolean gameOver = false;
 
         while (!gameOver) {
-            System.out.print("Move (N/E/S/W): ");
+            System.out.print("Move (W/A/S/D): ");
             System.out.flush();
             if (!playermove.hasNextLine()) break;
             String direction = playermove.nextLine().trim();
 
             boolean moved = true;
-            if (direction.equalsIgnoreCase("n")) moved = map.movePlayer(0, -1);
-            else if (direction.equalsIgnoreCase("e")) moved = map.movePlayer(1, 0);
+            if (direction.equalsIgnoreCase("w")) moved = map.movePlayer(0, -1);
+            else if (direction.equalsIgnoreCase("d")) moved = map.movePlayer(1, 0);
             else if (direction.equalsIgnoreCase("s")) moved = map.movePlayer(0, 1);
-            else if (direction.equalsIgnoreCase("w")) moved = map.movePlayer(-1, 0);
+            else if (direction.equalsIgnoreCase("a")) moved = map.movePlayer(-1, 0);
             else moved = false;
 
             if (!moved) {
@@ -485,7 +498,7 @@ if (enemyRoll >= 7) {
                     int patrolSize = 10 + (int) (Math.random() * 20);
                     String enemyType = enemyList[randomEnemyType];
                     int strongestHealth = unitHealth(enemyType);
-                    int patrolHealth = strongestHealth + (patrolSize - 1) * 100;
+                    int patrolHealth = strongestHealth + (patrolSize - 1) * Patrol.GRUNT_HEALTH;
                         Patrol bigPatrol = new Patrol(patrolHealth, patrolSize, enemyType, strongestHealth);
                         System.out.println("Health: " + bigPatrol.combinedHealth);
                         System.out.println("Size: " + bigPatrol.patrolMembers);
