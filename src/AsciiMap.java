@@ -22,6 +22,18 @@ public class AsciiMap {
     static int stims = MAX_STIMS;
     static final int MAX_RESUPPLIES = 4;
     static int resupplies = MAX_RESUPPLIES;
+    static final int MAX_MAGAZINES = 6;
+    static int magazines = MAX_MAGAZINES;
+    static final int PRIMARY_MAG_SIZE = 5;
+    static final int SECONDARY_MAG_SIZE = 3;
+    static int primaryRounds = PRIMARY_MAG_SIZE;
+    static int secondaryRounds = SECONDARY_MAG_SIZE;
+
+    static void printAmmo() {
+        System.out.println("Primary: " + primaryRounds + "/" + PRIMARY_MAG_SIZE + " rounds. Secondary: "
+                + secondaryRounds + "/" + SECONDARY_MAG_SIZE + " rounds. Spare magazines: "
+                + magazines + "/" + MAX_MAGAZINES);
+    }
 
     static int heal(int amount) {
         int healed = Math.min(amount, MAX_PLAYER_HEALTH - playerhealth);
@@ -36,7 +48,6 @@ public class AsciiMap {
     tileUnderPlayer = emptyChar;
 }
 
-    // Initialize the map with a default empty character
     public AsciiMap(int width, int height, char emptyChar) {
         this.width = width;
         this.height = height;
@@ -50,7 +61,7 @@ public class AsciiMap {
             Arrays.fill(grid[i], emptyChar);
         }
     }
-    // Edit a specific coordinate on the map
+
     public boolean setTile(int x, int y, char tile) {
         if (x >= 0 && x < width && y >= 0 && y < height) {
             grid[y][x] = tile;
@@ -59,7 +70,7 @@ public class AsciiMap {
         System.out.println("Error: Coordinates out of bounds!");
         return false;
     }
-    // Place a tile on a random empty spot that isn't the player's start, so nothing overwrites anything else
+
     public void placeOnEmptyTile(char tile) {
         int x, y;
         do {
@@ -95,9 +106,7 @@ public class AsciiMap {
         return true;
     }
 
-    // Render the map to the console
 public void draw() {
-        // Clear console screen (optional, works in some terminals)
         System.out.flush();
 
         for (int y = 0; y < height; y++) {
@@ -140,7 +149,7 @@ private static boolean containsSymbol(char[] symbols, char tile) {
             case "Tank" :      return 2000;
             case "WarStrider": return 5000;
             case "Factory Strider": return 7500;
-            default:           return 100; // for minimum health and for unknown types
+            default:           return 100;
         }
     }
 
@@ -149,7 +158,7 @@ private static boolean containsSymbol(char[] symbols, char tile) {
         int damageTaken = enemy.scaleDamage(enemyDamage + (int) (Math.random()*50));
         if (in.hasNextLine() && in.nextLine().trim().equalsIgnoreCase("Y")) {
             int dodgeRoll = (int) (Math.random() * 100);
-            if (dodgeRoll < 50) { // 50% chance to dodge
+            if (dodgeRoll < 44) {
                 System.out.println("You successfully dodged the attack!");
                 damageTaken = 0;
             } else {
@@ -170,11 +179,53 @@ private static boolean containsSymbol(char[] symbols, char tile) {
             System.out.println("Please pick one of the combat options: PRIMARY, SECONDARY, "
                     + loadout.getStratagemOne() + ", " + loadout.getStratagemTwo() + ", "
                     + loadout.getStratagemThree() + ", " + loadout.getStratagemFour() + ", MELEE, "
-                    + "STIM (" + stims + " left), " + "RESUPPLY (" + resupplies + " left). NOTE: Use WASD to input the codes, as you would in the base game.");
+                    + "STIM (" + stims + " left), " + "RESUPPLY (" + resupplies + " left), RELOAD, AMMO. NOTE: Use WASD to input the codes, as you would in the base game.");
             if (!in.hasNextLine()) return false;
             String attack = in.nextLine().trim();
 
-            if (attack.equalsIgnoreCase("STIM")) {
+            if (attack.equalsIgnoreCase("AMMO")) {
+                printAmmo(); // checking ammo is free and doesn't use a turn
+                continue;
+
+            } else if (attack.equalsIgnoreCase("RELOAD")) {
+                System.out.println("Reload which weapon? (PRIMARY/SECONDARY)");
+                if (!in.hasNextLine()) return false;
+                String weapon = in.nextLine().trim();
+                boolean isPrimary = weapon.equalsIgnoreCase("PRIMARY");
+                if (!isPrimary && !weapon.equalsIgnoreCase("SECONDARY")) {
+                    System.out.println("Invalid weapon.");
+                    continue;
+                }
+                int rounds = isPrimary ? primaryRounds : secondaryRounds;
+                int magSize = isPrimary ? PRIMARY_MAG_SIZE : SECONDARY_MAG_SIZE;
+                if (rounds == magSize) {
+                    System.out.println("That magazine is already full.");
+                    continue;
+                }
+                if (magazines <= 0) {
+                    System.out.println("You're out of spare magazines! Call a RESUPPLY.");
+                    continue;
+                }
+                loadout.tickCooldowns();
+                String reloadCode = Codebuilder.randomCode(5, 7);
+                System.out.println("Enter the reload code: " + reloadCode);
+                if (!in.hasNextLine()) return false;
+                if (in.nextLine().trim().equalsIgnoreCase(reloadCode)) {
+                    magazines--; // like the base game, leftover rounds are lost with the old magazine
+                    if (isPrimary) {
+                        primaryRounds = PRIMARY_MAG_SIZE;
+                    } else {
+                        secondaryRounds = SECONDARY_MAG_SIZE;
+                    }
+                    System.out.println("You reloaded your " + weapon.toLowerCase() + " weapon.");
+                } else {
+                    System.out.println("Wrong code! You fumbled the reload."); // the magazine isn't used up
+                }
+                printAmmo();
+                if (!enemyTurn(enemy, enemyName, enemyDamage, in)) return false;
+                continue;
+
+            } else if (attack.equalsIgnoreCase("STIM")) {
                 if (stims <= 0) {
                     System.out.println("You're out of stims!");
                     continue;
@@ -196,14 +247,16 @@ private static boolean containsSymbol(char[] symbols, char tile) {
                     System.out.println("You're out of resupplies!");
                     continue;
                 }
-                if (stims == MAX_STIMS) {
-                    System.out.println("Your stims are already full.");
+                if (stims == MAX_STIMS && magazines == MAX_MAGAZINES) {
+                    System.out.println("Your stims and magazines are already full.");
                     continue;
                 }
                 loadout.tickCooldowns();
                 resupplies--;
-                stims = MAX_STIMS;
-                System.out.println("You used a resupply and restored your stims. Stims: " + stims + ". Resupplies left: " + resupplies);
+                stims = Math.min(MAX_STIMS, stims + 2);
+                magazines = Math.min(MAX_MAGAZINES, magazines + 3);
+                System.out.println("You used a resupply. Stims: " + stims + ". Spare magazines: " + magazines
+                        + ". Resupplies left: " + resupplies);
                 if (!enemyTurn(enemy, enemyName, enemyDamage, in)) return false;
                 continue;
             }
@@ -222,6 +275,12 @@ private static boolean containsSymbol(char[] symbols, char tile) {
             }
             if (isEquippedStratagem && loadout.getCooldown(attack) > 0) {
                 System.out.println(attack.toUpperCase() + " is on cooldown for " + loadout.getCooldown(attack) + " more turn(s).");
+                continue;
+            }
+            boolean isPrimary = attack.equalsIgnoreCase("PRIMARY");
+            boolean isSecondary = attack.equalsIgnoreCase("SECONDARY");
+            if ((isPrimary && primaryRounds <= 0) || (isSecondary && secondaryRounds <= 0)) {
+                System.out.println("Your " + attack.toLowerCase() + " weapon is empty! Use RELOAD.");
                 continue;
             }
 
@@ -243,6 +302,13 @@ private static boolean containsSymbol(char[] symbols, char tile) {
             System.out.println("You used the " + chosen.attackName + ".");
             if (isEquippedStratagem) {
                 loadout.startCooldown(attack);
+            }
+            if (isPrimary) {
+                primaryRounds--;
+                System.out.println("Primary rounds left: " + primaryRounds + "/" + PRIMARY_MAG_SIZE);
+            } else if (isSecondary) {
+                secondaryRounds--;
+                System.out.println("Secondary rounds left: " + secondaryRounds + "/" + SECONDARY_MAG_SIZE);
             }
             int membersBefore = enemy.patrolMembers;
             if (attack.equalsIgnoreCase("ORAIL")) {
