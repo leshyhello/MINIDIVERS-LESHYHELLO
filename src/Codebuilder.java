@@ -12,4 +12,8 @@ public class Codebuilder {
         }
         return code.toString();
     }
+
+    public static String randomCode(int minLength, int maxLength) {
+        return randomCode(minLength + RNG.nextInt(maxLength - minLength + 1));
+    }
 }
